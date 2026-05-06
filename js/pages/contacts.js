@@ -239,3 +239,39 @@ function renderContactDetail() {
       </div>
     </div>`;
 }
+
+async function saveContactWithSync(id) {
+  const svcs = [...document.querySelectorAll('.svc-cb:checked')].map(cb => cb.value);
+  const data = {
+    first: document.getElementById('mFirst').value.trim(),
+    last: document.getElementById('mLast').value.trim(),
+    phone: document.getElementById('mPhone').value.trim(),
+    email: document.getElementById('mEmail').value.trim(),
+    city: document.getElementById('mCity').value.trim(),
+    address: document.getElementById('mAddress').value.trim(),
+    stage: document.getElementById('mStage').value,
+    source: document.getElementById('mSource').value,
+    assign: document.getElementById('mAssign').value,
+    followup: document.getElementById('mFollowup').value,
+    notes: document.getElementById('mNotes').value.trim(),
+    services: svcs,
+  };
+  if (!data.first && !data.last) { alert('Please enter a name.'); return; }
+  let record;
+  if (id) {
+    const idx = contacts.findIndex(c => c.id === id);
+    if (idx !== -1) { contacts[idx] = { ...contacts[idx], ...data }; record = contacts[idx]; }
+  } else {
+    record = { id: uid(), created: new Date().toISOString(), ...data };
+    contacts.unshift(record);
+  }
+  persist();
+  closeModal();
+  toast(id ? 'Contact updated' : 'Contact added');
+  await pushRecord('Contacts', record);
+  if (currentPage === 'contacts') renderContacts();
+  else if (currentPage === 'pipeline') renderPipeline();
+  else if (currentPage === 'dashboard') renderDashboard();
+  else if (currentPage === 'contact_detail') renderContactDetail();
+}
+window.saveContact = saveContactWithSync;
