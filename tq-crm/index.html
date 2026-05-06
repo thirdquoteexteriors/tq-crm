@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Third Quote Exteriors — CRM</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app" id="app">
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-logo">TQ</div>
+      <div>
+        <div class="brand-name">Third Quote</div>
+        <div class="brand-sub">Exteriors CRM</div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-item active" data-page="dashboard"><span class="nav-icon">⬛</span> Dashboard</div>
+      <div class="nav-item" data-page="pipeline"><span class="nav-icon">🔲</span> Pipeline</div>
+      <div class="nav-item" data-page="contacts"><span class="nav-icon">👥</span> Contacts</div>
+      <div class="nav-item" data-page="estimates"><span class="nav-icon">📋</span> Estimates</div>
+      <div class="nav-divider"></div>
+      <div class="nav-item" data-page="tasks" id="nav-tasks"><span class="nav-icon">✓</span> Tasks <span class="nav-badge" id="taskBadge" style="display:none">0</span></div>
+      <div class="nav-item" data-page="activity"><span class="nav-icon">📝</span> Activity</div>
+      <div class="nav-divider"></div>
+      <div class="nav-item" data-page="import"><span class="nav-icon">↕</span> Import / Export</div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="gmail-status" id="gmailStatus">
+        <div class="gmail-dot" id="gmailDot"></div>
+        <span id="gmailLabel">Gmail: not connected</span>
+      </div>
+      <button class="btn-gmail" id="gmailBtn" onclick="handleGmailAuth()">Connect Gmail</button>
+      <div id="syncStatus" style="font-size:11px;color:#9ca3af;min-height:16px;text-align:center"></div>
+      <select class="user-select" id="currentUser" onchange="saveSettings()">
+        <option value="Me">👤 Me</option>
+        <option value="Brother">👤 Brother</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="mobile-overlay" id="mobileOverlay" onclick="closeSidebar()"></div>
+
+  <div class="main">
+    <div class="topbar">
+      <button class="hamburger" id="hamburger" onclick="openSidebar()">☰</button>
+      <h1 class="topbar-title" id="pageTitle">Dashboard</h1>
+      <div class="topbar-actions" id="topbarActions">
+        <button class="btn btn-sm" onclick="manualSync()" title="Sync now">⟳ Sync</button>
+      </div>
+    </div>
+    <div class="content" id="content"></div>
+  </div>
+</div>
+
+<div id="modalContainer"></div>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="js/data.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/gmail.js"></script>
+<script src="js/pages/dashboard.js"></script>
+<script src="js/pages/pipeline.js"></script>
+<script src="js/pages/contacts.js"></script>
+<script src="js/pages/estimates.js"></script>
+<script src="js/pages/tasks.js"></script>
+<script src="js/pages/activity.js"></script>
+<script src="js/pages/importexport.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
