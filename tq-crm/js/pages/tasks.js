@@ -1,1 +1,1 @@
-// Tasks page functions are defined in estimates.js
+// Tasks page functions are in estimates.js

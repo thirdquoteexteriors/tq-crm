@@ -1,1 +1,1 @@
-// Activity page functions are defined in estimates.js
+// Activity page functions are in estimates.js

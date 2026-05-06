@@ -2,23 +2,19 @@
 function renderEstimates() {
   const search = (document.getElementById('estSearch')?.value || '').toLowerCase();
   const fStatus = document.getElementById('fEstStatus')?.value || '';
-
   const filtered = estimates.filter(e => {
     const c = contacts.find(x => x.id === e.contactId);
     const name = c ? (c.first + ' ' + c.last).toLowerCase() : '';
     return (!search || name.includes(search) || (e.title || '').toLowerCase().includes(search))
       && (!fStatus || e.status === fStatus);
   });
-
   const byStatus = s => estimates.filter(e => e.status === s).reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-
   document.getElementById('content').innerHTML = `
     <div class="stats-grid" style="margin-bottom:16px">
       ${['Quoted','Approved','Won','Lost'].map(s => `
         <div class="stat-card"><div class="stat-label">${s}</div>
         <div class="stat-value" style="font-size:18px">${formatMoney(byStatus(s))}</div>
-        <div class="stat-sub">${estimates.filter(e => e.status === s).length} estimate${estimates.filter(e => e.status === s).length !== 1 ? 's' : ''}</div>
-        </div>`).join('')}
+        <div class="stat-sub">${estimates.filter(e => e.status === s).length} estimate${estimates.filter(e => e.status === s).length !== 1 ? 's' : ''}</div></div>`).join('')}
     </div>
     <div class="filters-bar">
       <input class="search-input" id="estSearch" placeholder="Search contact or title..." value="${escAttr(search)}" oninput="renderEstimates()">
@@ -56,7 +52,6 @@ function openEstimateModal(id, contactId) {
   const e = id ? estimates.find(x => x.id === id) : null;
   const cid = e?.contactId || contactId || '';
   const cOpts = contacts.map(c => `<option value="${c.id}" ${cid === c.id ? 'selected' : ''}>${escAttr(c.first + ' ' + c.last)}</option>`).join('');
-
   document.getElementById('modalContainer').innerHTML = `
     <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
     <div class="modal">
@@ -97,220 +92,7 @@ function openEstimateModal(id, contactId) {
     </div></div>`;
 }
 
-function saveEstimate(id) {
-  const data = {
-    contactId: document.getElementById('eContact').value,
-    title: document.getElementById('eTitle').value.trim(),
-    service: document.getElementById('eService').value,
-    amount: document.getElementById('eAmount').value,
-    status: document.getElementById('eStatus').value,
-    date: document.getElementById('eDate').value,
-    notes: document.getElementById('eNotes').value.trim(),
-  };
-  if (!data.contactId) { alert('Please select a contact.'); return; }
-  if (id) { const idx = estimates.findIndex(e => e.id === id); if (idx !== -1) estimates[idx] = { ...estimates[idx], ...data }; }
-  else estimates.unshift({ id: uid(), created: new Date().toISOString(), ...data });
-  persist(); closeModal(); toast(id ? 'Estimate updated' : 'Estimate added');
-  if (currentPage === 'estimates') renderEstimates();
-  else if (currentPage === 'contact_detail') renderContactDetail();
-}
-
-function deleteEstimate(id) {
-  if (!confirm('Delete this estimate?')) return;
-  estimates = estimates.filter(e => e.id !== id);
-  persist(); toast('Deleted');
-  if (currentPage === 'estimates') renderEstimates();
-  else renderContactDetail();
-}
-
-// ── TASKS ────────────────────────────────────────────────
-function renderTasks() {
-  const fDone = document.getElementById('fDone')?.value || 'open';
-  const t = todayStr();
-  let filtered = tasks.filter(tk => fDone === 'all' ? true : fDone === 'open' ? !tk.done : tk.done);
-  filtered.sort((a, b) => {
-    if (!a.due && !b.due) return 0;
-    if (!a.due) return 1;
-    if (!b.due) return -1;
-    return a.due.localeCompare(b.due);
-  });
-
-  document.getElementById('content').innerHTML = `
-    <div class="filters-bar">
-      <select class="filter-select" id="fDone" onchange="renderTasks()">
-        <option value="open" ${fDone === 'open' ? 'selected' : ''}>Open tasks</option>
-        <option value="done" ${fDone === 'done' ? 'selected' : ''}>Completed</option>
-        <option value="all" ${fDone === 'all' ? 'selected' : ''}>All</option>
-      </select>
-    </div>
-    <div class="tasks-list">
-      ${filtered.length ? filtered.map(tk => {
-        const ds = tk.done ? '' : dayStatus(tk.due);
-        return `<div class="task-item ${ds}">
-          <div class="task-check ${tk.done ? 'done' : ''}" onclick="toggleTask('${tk.id}');renderTasks()">✓</div>
-          <div class="task-body" style="flex:1">
-            <div class="task-title ${tk.done ? 'done' : ''}">${escAttr(tk.title)}</div>
-            <div class="task-meta">${tk.contactName ? 'For: ' + escAttr(tk.contactName) : ''}${tk.assign ? (tk.contactName ? ' · ' : '') + escAttr(tk.assign) : ''}</div>
-            ${tk.due ? `<div class="task-due ${ds}">${ds === 'overdue' ? 'Overdue' : ds === 'today' ? 'Due today' : 'Due'}: ${formatDate(tk.due)}</div>` : ''}
-          </div>
-          <div style="display:flex;gap:4px;flex-shrink:0">
-            <button class="btn btn-sm btn-ghost" onclick="openTaskModal('${tk.id}')">Edit</button>
-            <button class="btn btn-sm btn-ghost btn-danger" onclick="deleteTask('${tk.id}')">Del</button>
-          </div>
-        </div>`;
-      }).join('') : `<div class="empty-state"><div class="empty-icon">✅</div><div class="empty-title">No tasks here</div><div class="empty-sub">Add a task to track your follow-ups</div></div>`}
-    </div>`;
-  updateTaskBadge();
-}
-
-function openTaskModal(id, contactId, contactName) {
-  const tk = id ? tasks.find(x => x.id === id) : null;
-  const cid = tk?.contactId || contactId || '';
-  const cOpts = contacts.map(c => `<option value="${c.id}" data-name="${escAttr(c.first + ' ' + c.last)}" ${cid === c.id ? 'selected' : ''}>${escAttr(c.first + ' ' + c.last)}</option>`).join('');
-
-  document.getElementById('modalContainer').innerHTML = `
-    <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
-    <div class="modal">
-      <div class="modal-header"><div class="modal-title">${tk ? 'Edit task' : 'Add task'}</div><button class="btn btn-ghost btn-icon" onclick="closeModal()">✕</button></div>
-      <div class="modal-body">
-        <div class="form-row">
-          <div class="form-group full"><label class="form-label">Task description</label>
-            <input class="form-input" id="tTitle" value="${escAttr(tk?.title || '')}" placeholder="e.g. Call back to confirm estimate">
-          </div>
-          <div class="form-group full"><label class="form-label">Contact (optional)</label>
-            <select class="form-input" id="tContact"><option value="">—</option>${cOpts}</select>
-          </div>
-          <div class="form-group"><label class="form-label">Due date</label>
-            <input class="form-input" id="tDue" type="date" value="${escAttr(tk?.due || '')}">
-          </div>
-          <div class="form-group"><label class="form-label">Assigned to</label>
-            <select class="form-input" id="tAssign">
-              <option value="">—</option>
-              <option ${tk?.assign === 'Me' ? 'selected' : ''}>Me</option>
-              <option ${tk?.assign === 'Brother' ? 'selected' : ''}>Brother</option>
-            </select>
-          </div>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="saveTask('${tk?.id || ''}')">Save task</button>
-      </div>
-    </div></div>`;
-}
-
-function saveTask(id) {
-  const sel = document.getElementById('tContact');
-  const cName = sel.value ? sel.options[sel.selectedIndex].dataset.name : '';
-  const data = {
-    title: document.getElementById('tTitle').value.trim(),
-    contactId: sel.value,
-    contactName: cName,
-    due: document.getElementById('tDue').value,
-    assign: document.getElementById('tAssign').value,
-    done: id ? (tasks.find(t => t.id === id)?.done || false) : false,
-  };
-  if (!data.title) { alert('Please enter a task description.'); return; }
-  if (id) { const idx = tasks.findIndex(t => t.id === id); if (idx !== -1) tasks[idx] = { ...tasks[idx], ...data }; }
-  else tasks.unshift({ id: uid(), created: new Date().toISOString(), ...data });
-  persist(); closeModal(); updateTaskBadge(); toast(id ? 'Task updated' : 'Task added');
-  if (currentPage === 'tasks') renderTasks();
-  else if (currentPage === 'contact_detail') renderContactDetail();
-  else if (currentPage === 'dashboard') renderDashboard();
-}
-
-function toggleTask(id) {
-  const tk = tasks.find(t => t.id === id);
-  if (tk) { tk.done = !tk.done; persist(); updateTaskBadge(); }
-}
-
-function deleteTask(id) {
-  if (!confirm('Delete this task?')) return;
-  tasks = tasks.filter(t => t.id !== id);
-  persist(); toast('Task deleted'); updateTaskBadge();
-  if (currentPage === 'tasks') renderTasks();
-  else renderContactDetail();
-}
-
-// ── ACTIVITY ─────────────────────────────────────────────
-function renderActivity() {
-  const fType = document.getElementById('fActType')?.value || '';
-  let filtered = activity.filter(a => !fType || a.type === fType);
-  filtered = filtered.slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-
-  document.getElementById('content').innerHTML = `
-    <div class="filters-bar">
-      <select class="filter-select" id="fActType" onchange="renderActivity()">
-        <option value="">All types</option>
-        ${ACTIVITY_TYPES.map(t => `<option ${fType === t ? 'selected' : ''}>${t}</option>`).join('')}
-      </select>
-    </div>
-    <div class="card">
-      <div class="activity-list">
-        ${filtered.length ? filtered.map(activityItemHTML).join('') : `<div class="empty-state"><div class="empty-icon">📝</div><div class="empty-title">No activity logged yet</div><div class="empty-sub">Log calls, emails, and notes to track your interactions</div></div>`}
-      </div>
-    </div>`;
-}
-
-function openActivityModal(contactId, contactName) {
-  const cid = contactId || '';
-  const cOpts = contacts.map(c => `<option value="${c.id}" data-name="${escAttr(c.first + ' ' + c.last)}" ${cid === c.id ? 'selected' : ''}>${escAttr(c.first + ' ' + c.last)}</option>`).join('');
-
-  document.getElementById('modalContainer').innerHTML = `
-    <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
-    <div class="modal">
-      <div class="modal-header"><div class="modal-title">Log activity</div><button class="btn btn-ghost btn-icon" onclick="closeModal()">✕</button></div>
-      <div class="modal-body">
-        <div class="form-row">
-          <div class="form-group"><label class="form-label">Type</label>
-            <select class="form-input" id="aType">
-              ${ACTIVITY_TYPES.map(t => `<option>${t}</option>`).join('')}
-            </select>
-          </div>
-          <div class="form-group"><label class="form-label">Date</label>
-            <input class="form-input" id="aDate" type="date" value="${todayStr()}">
-          </div>
-          <div class="form-group full"><label class="form-label">Contact</label>
-            <select class="form-input" id="aContact"><option value="">—</option>${cOpts}</select>
-          </div>
-          <div class="form-group"><label class="form-label">Logged by</label>
-            <select class="form-input" id="aAssign">
-              <option>Me</option><option>Brother</option>
-            </select>
-          </div>
-          <div class="form-group full"><label class="form-label">Notes</label>
-            <textarea class="form-input" id="aNotes" placeholder="What was discussed?"></textarea>
-          </div>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn" onclick="closeModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="saveActivity()">Save</button>
-      </div>
-    </div></div>`;
-}
-
-function saveActivity() {
-  const sel = document.getElementById('aContact');
-  const cName = sel.value ? sel.options[sel.selectedIndex].dataset.name : '';
-  const data = {
-    id: uid(),
-    type: document.getElementById('aType').value,
-    date: document.getElementById('aDate').value,
-    contactId: sel.value,
-    contactName: cName,
-    assign: document.getElementById('aAssign').value,
-    notes: document.getElementById('aNotes').value.trim(),
-    created: new Date().toISOString(),
-  };
-  activity.unshift(data);
-  persist(); closeModal(); toast('Activity logged');
-  if (currentPage === 'activity') renderActivity();
-  else if (currentPage === 'contact_detail') renderContactDetail();
-}
-
-// Patch saveEstimate to sync
-async function saveEstimateWithSync(id) {
+async function saveEstimate(id) {
   const data = {
     contactId: document.getElementById('eContact').value,
     title: document.getElementById('eTitle').value.trim(),
@@ -330,24 +112,90 @@ async function saveEstimateWithSync(id) {
     estimates.unshift(record);
   }
   persist(); closeModal(); toast(id ? 'Estimate updated' : 'Estimate added');
-  pushRecord('Estimates', record);
+  await pushRecord('Estimates', record);
   if (currentPage === 'estimates') renderEstimates();
   else if (currentPage === 'contact_detail') renderContactDetail();
 }
-window.saveEstimate = saveEstimateWithSync;
 
-async function deleteEstimateWithSync(id) {
+async function deleteEstimate(id) {
   if (!confirm('Delete this estimate?')) return;
   estimates = estimates.filter(e => e.id !== id);
   persist(); toast('Deleted');
-  pushDelete('Estimates', id);
+  await pushDelete('Estimates', id);
   if (currentPage === 'estimates') renderEstimates();
   else renderContactDetail();
 }
-window.deleteEstimate = deleteEstimateWithSync;
 
-// Patch saveTask to sync
-async function saveTaskWithSync(id) {
+// ── TASKS ────────────────────────────────────────────────
+function renderTasks() {
+  const fDone = document.getElementById('fDone')?.value || 'open';
+  const t = todayStr();
+  let filtered = tasks.filter(tk => fDone === 'all' ? true : fDone === 'open' ? !tk.done : tk.done);
+  filtered.sort((a, b) => { if (!a.due && !b.due) return 0; if (!a.due) return 1; if (!b.due) return -1; return a.due.localeCompare(b.due); });
+  document.getElementById('content').innerHTML = `
+    <div class="filters-bar">
+      <select class="filter-select" id="fDone" onchange="renderTasks()">
+        <option value="open" ${fDone==='open'?'selected':''}>Open tasks</option>
+        <option value="done" ${fDone==='done'?'selected':''}>Completed</option>
+        <option value="all" ${fDone==='all'?'selected':''}>All</option>
+      </select>
+    </div>
+    <div class="tasks-list">
+      ${filtered.length ? filtered.map(tk => {
+        const ds = tk.done ? '' : dayStatus(tk.due);
+        return `<div class="task-item ${ds}">
+          <div class="task-check ${tk.done?'done':''}" onclick="toggleTask('${tk.id}');renderTasks()">✓</div>
+          <div class="task-body" style="flex:1">
+            <div class="task-title ${tk.done?'done':''}">${escAttr(tk.title)}</div>
+            <div class="task-meta">${tk.contactName?'For: '+escAttr(tk.contactName):''}${tk.assign?(tk.contactName?' · ':'')+escAttr(tk.assign):''}</div>
+            ${tk.due?`<div class="task-due ${ds}">${ds==='overdue'?'Overdue':ds==='today'?'Due today':'Due'}: ${formatDate(tk.due)}</div>`:''}
+          </div>
+          <div style="display:flex;gap:4px;flex-shrink:0">
+            <button class="btn btn-sm btn-ghost" onclick="openTaskModal('${tk.id}')">Edit</button>
+            <button class="btn btn-sm btn-ghost btn-danger" onclick="deleteTask('${tk.id}')">Del</button>
+          </div>
+        </div>`;
+      }).join('') : `<div class="empty-state"><div class="empty-icon">✅</div><div class="empty-title">No tasks here</div><div class="empty-sub">Add a task to track your follow-ups</div></div>`}
+    </div>`;
+  updateTaskBadge();
+}
+
+function openTaskModal(id, contactId, contactName) {
+  const tk = id ? tasks.find(x => x.id === id) : null;
+  const cid = tk?.contactId || contactId || '';
+  const cOpts = contacts.map(c => `<option value="${c.id}" data-name="${escAttr(c.first+' '+c.last)}" ${cid===c.id?'selected':''}>${escAttr(c.first+' '+c.last)}</option>`).join('');
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
+    <div class="modal">
+      <div class="modal-header"><div class="modal-title">${tk?'Edit task':'Add task'}</div><button class="btn btn-ghost btn-icon" onclick="closeModal()">✕</button></div>
+      <div class="modal-body">
+        <div class="form-row">
+          <div class="form-group full"><label class="form-label">Task description</label>
+            <input class="form-input" id="tTitle" value="${escAttr(tk?.title||'')}" placeholder="e.g. Call back to confirm estimate">
+          </div>
+          <div class="form-group full"><label class="form-label">Contact (optional)</label>
+            <select class="form-input" id="tContact"><option value="">—</option>${cOpts}</select>
+          </div>
+          <div class="form-group"><label class="form-label">Due date</label>
+            <input class="form-input" id="tDue" type="date" value="${escAttr(tk?.due||'')}">
+          </div>
+          <div class="form-group"><label class="form-label">Assigned to</label>
+            <select class="form-input" id="tAssign">
+              <option value="">—</option>
+              <option ${tk?.assign==='Me'?'selected':''}>Me</option>
+              <option ${tk?.assign==='Brother'?'selected':''}>Brother</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveTask('${tk?.id||''}')">Save task</button>
+      </div>
+    </div></div>`;
+}
+
+async function saveTask(id) {
   const sel = document.getElementById('tContact');
   const cName = sel.value ? sel.options[sel.selectedIndex].dataset.name : '';
   const data = {
@@ -360,40 +208,84 @@ async function saveTaskWithSync(id) {
   };
   if (!data.title) { alert('Please enter a task description.'); return; }
   let record;
-  if (id) {
-    const idx = tasks.findIndex(t => t.id === id);
-    if (idx !== -1) { tasks[idx] = { ...tasks[idx], ...data }; record = tasks[idx]; }
-  } else {
-    record = { id: uid(), created: new Date().toISOString(), ...data };
-    tasks.unshift(record);
-  }
+  if (id) { const idx = tasks.findIndex(t => t.id === id); if (idx !== -1) { tasks[idx] = { ...tasks[idx], ...data }; record = tasks[idx]; } }
+  else { record = { id: uid(), created: new Date().toISOString(), ...data }; tasks.unshift(record); }
   persist(); closeModal(); updateTaskBadge(); toast(id ? 'Task updated' : 'Task added');
-  pushRecord('Tasks', record);
+  await pushRecord('Tasks', record);
   if (currentPage === 'tasks') renderTasks();
   else if (currentPage === 'contact_detail') renderContactDetail();
   else if (currentPage === 'dashboard') renderDashboard();
 }
-window.saveTask = saveTaskWithSync;
 
-const _origToggleTask = toggleTask;
-function toggleTaskWithSync(id) {
+async function toggleTask(id) {
   const tk = tasks.find(t => t.id === id);
-  if (tk) { tk.done = !tk.done; persist(); updateTaskBadge(); pushRecord('Tasks', tk); }
+  if (tk) { tk.done = !tk.done; persist(); updateTaskBadge(); await pushRecord('Tasks', tk); }
 }
-window.toggleTask = toggleTaskWithSync;
 
-async function deleteTaskWithSync(id) {
+async function deleteTask(id) {
   if (!confirm('Delete this task?')) return;
   tasks = tasks.filter(t => t.id !== id);
   persist(); toast('Task deleted'); updateTaskBadge();
-  pushDelete('Tasks', id);
+  await pushDelete('Tasks', id);
   if (currentPage === 'tasks') renderTasks();
   else renderContactDetail();
 }
-window.deleteTask = deleteTaskWithSync;
 
-// Patch saveActivity to sync
-async function saveActivityWithSync() {
+// ── ACTIVITY ─────────────────────────────────────────────
+function renderActivity() {
+  const fType = document.getElementById('fActType')?.value || '';
+  let filtered = activity.filter(a => !fType || a.type === fType);
+  filtered = filtered.slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  document.getElementById('content').innerHTML = `
+    <div class="filters-bar">
+      <select class="filter-select" id="fActType" onchange="renderActivity()">
+        <option value="">All types</option>
+        ${ACTIVITY_TYPES.map(t => `<option ${fType===t?'selected':''}>${t}</option>`).join('')}
+      </select>
+    </div>
+    <div class="card">
+      <div class="activity-list">
+        ${filtered.length ? filtered.map(activityItemHTML).join('') : `<div class="empty-state"><div class="empty-icon">📝</div><div class="empty-title">No activity logged yet</div><div class="empty-sub">Log calls, emails, and notes to track your interactions</div></div>`}
+      </div>
+    </div>`;
+}
+
+function openActivityModal(contactId, contactName) {
+  const cid = contactId || '';
+  const cOpts = contacts.map(c => `<option value="${c.id}" data-name="${escAttr(c.first+' '+c.last)}" ${cid===c.id?'selected':''}>${escAttr(c.first+' '+c.last)}</option>`).join('');
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
+    <div class="modal">
+      <div class="modal-header"><div class="modal-title">Log activity</div><button class="btn btn-ghost btn-icon" onclick="closeModal()">✕</button></div>
+      <div class="modal-body">
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Type</label>
+            <select class="form-input" id="aType">
+              ${ACTIVITY_TYPES.map(t => `<option>${t}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Date</label>
+            <input class="form-input" id="aDate" type="date" value="${todayStr()}">
+          </div>
+          <div class="form-group full"><label class="form-label">Contact</label>
+            <select class="form-input" id="aContact"><option value="">—</option>${cOpts}</select>
+          </div>
+          <div class="form-group"><label class="form-label">Logged by</label>
+            <select class="form-input" id="aAssign"><option>Me</option><option>Brother</option></select>
+          </div>
+          <div class="form-group full"><label class="form-label">Notes</label>
+            <textarea class="form-input" id="aNotes" placeholder="What was discussed?"></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveActivity()">Save</button>
+      </div>
+    </div></div>`;
+}
+
+async function saveActivity() {
   const sel = document.getElementById('aContact');
   const cName = sel.value ? sel.options[sel.selectedIndex].dataset.name : '';
   const record = {
@@ -408,8 +300,7 @@ async function saveActivityWithSync() {
   };
   activity.unshift(record);
   persist(); closeModal(); toast('Activity logged');
-  pushRecord('Activity', record);
+  await pushRecord('Activity', record);
   if (currentPage === 'activity') renderActivity();
   else if (currentPage === 'contact_detail') renderContactDetail();
 }
-window.saveActivity = saveActivityWithSync;

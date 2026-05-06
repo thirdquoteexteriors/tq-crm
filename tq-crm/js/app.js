@@ -13,10 +13,23 @@ const PAGE_CONFIG = {
   contact_detail: { title: 'Contact detail',      render: renderContactDetail },
 };
 
+// Pages Aaron (Brother) can access
+const BROTHER_PAGES = ['contacts', 'contact_detail'];
+
+function isBrother() {
+  return document.getElementById('currentUser')?.value === 'Brother';
+}
+
 function showPage(page, contactId) {
+  // If Brother tries to access a restricted page, redirect to contacts
+  if (isBrother() && !BROTHER_PAGES.includes(page)) {
+    page = 'contacts';
+  }
+
   if (contactId) currentContactId = contactId;
   currentPage = page;
 
+  // Update nav
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
   const navMap = { dashboard:0, pipeline:1, contacts:2, estimates:3, tasks:4, activity:5, import:6 };
   const navItems = document.querySelectorAll('.nav-item');
@@ -24,11 +37,32 @@ function showPage(page, contactId) {
 
   const cfg = PAGE_CONFIG[page];
   document.getElementById('pageTitle').textContent = cfg?.title || page;
-  document.getElementById('topbarActions').innerHTML = `<button class="btn btn-sm" onclick="manualSync()" title="Sync now">⟳ Sync</button>`;
+  document.getElementById('topbarActions').innerHTML = `<button class="btn btn-sm" onclick="manualSync()">⟳ Sync</button>`;
   if (cfg?.action) cfg.action();
   if (cfg?.render) cfg.render();
   updateTaskBadge();
   closeSidebar();
+}
+
+function updateSidebarForUser() {
+  const brother = isBrother();
+  // Hide/show nav items based on user
+  const allNavItems = document.querySelectorAll('.nav-item[data-page]');
+  allNavItems.forEach(el => {
+    const page = el.dataset.page;
+    if (brother) {
+      el.style.display = BROTHER_PAGES.includes(page) || page === 'contacts' ? '' : 'none';
+    } else {
+      el.style.display = '';
+    }
+  });
+  // Hide dividers if brother
+  document.querySelectorAll('.nav-divider').forEach(el => {
+    el.style.display = brother ? 'none' : '';
+  });
+  // Hide task badge area if brother
+  const taskBadge = document.getElementById('nav-tasks');
+  if (taskBadge) taskBadge.style.display = brother ? 'none' : '';
 }
 
 function contactsTopbar() {
@@ -73,10 +107,24 @@ document.querySelectorAll('.nav-item[data-page]').forEach(el => {
   el.addEventListener('click', () => showPage(el.dataset.page));
 });
 
-// Init — load local first for instant render, then fetch from Sheets
+// When user switches between Me/Brother
+document.getElementById('currentUser').addEventListener('change', () => {
+  saveSettings();
+  updateSidebarForUser();
+  // Redirect brother to contacts if on a restricted page
+  if (isBrother() && !BROTHER_PAGES.includes(currentPage)) {
+    showPage('contacts');
+  } else {
+    showPage(currentPage);
+  }
+});
+
+// Init
 const settings = loadSettings();
 if (settings.user) document.getElementById('currentUser').value = settings.user;
-showPage('dashboard');
+updateSidebarForUser();
+showPage(isBrother() ? 'contacts' : 'dashboard');
 loadFromSheets().then(() => {
-  if (currentPage === 'dashboard') renderDashboard();
+  const cfg = PAGE_CONFIG[currentPage];
+  if (cfg?.render) cfg.render();
 });

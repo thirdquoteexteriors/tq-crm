@@ -2,7 +2,7 @@ const SPREADSHEET_ID = '1RX0OnPif17popjx9dL2ybXndO4XFiJN-lKbwKFAMqk4';
 const SHEET_NAMES = ['Contacts', 'Estimates', 'Tasks', 'Activity'];
 
 const HEADERS = {
-  Contacts:  ['id','first','last','phone','email','city','address','stage','services','source','assign','followup','notes','created'],
+  Contacts:  ['id','first','last','phone','email','street','city','state','zip','address','stage','services','source','assign','followup','heat','notes','created'],
   Estimates: ['id','contactId','title','service','amount','status','date','notes','created'],
   Tasks:     ['id','title','contactId','contactName','due','assign','done','created'],
   Activity:  ['id','type','contactId','contactName','date','assign','notes','created'],
@@ -10,7 +10,6 @@ const HEADERS = {
 
 function doGet(e) {
   const p = e.parameter || {};
-  // record may be JSON-encoded string in GET param
   let body = {};
   if (p.record) { try { body.record = JSON.parse(p.record); } catch(err) {} }
   if (p.data)   { try { body.data   = JSON.parse(p.data);   } catch(err) {} }
@@ -23,9 +22,7 @@ function doPost(e) {
   let body = {};
   try { body = JSON.parse(e.postData.contents || '{}'); } catch(err) {}
   const p = e.parameter || {};
-  const action = p.action || body.action;
-  const sheet  = p.sheet  || body.sheet;
-  const result = handleAction(action, sheet, body);
+  const result = handleAction(p.action || body.action, p.sheet || body.sheet, body);
   return sendJSON(result);
 }
 
@@ -40,14 +37,12 @@ function handleAction(action, sheet, body) {
       default:       return { error: 'Unknown action: ' + action };
     }
   } catch(err) {
-    return { error: err.message, stack: err.stack };
+    return { error: err.message };
   }
 }
 
 function sendJSON(data) {
-  return ContentService
-    .createTextOutput(JSON.stringify(data))
-    .setMimeType(ContentService.MimeType.JSON);
+  return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON);
 }
 
 function ss() { return SpreadsheetApp.openById(SPREADSHEET_ID); }
@@ -60,9 +55,8 @@ function getSheet(name) {
     sh.getRange(1,1,1,HEADERS[name].length).setValues([HEADERS[name]]);
     return sh;
   }
-  // Ensure headers exist
-  const first = sh.getRange(1,1,1,HEADERS[name].length).getValues()[0];
-  if (first.every(v => !v || v==='')) {
+  const first = sh.getRange(1,1,1,1).getValues()[0][0];
+  if (!first || first === '') {
     sh.getRange(1,1,1,HEADERS[name].length).setValues([HEADERS[name]]);
   }
   return sh;
@@ -78,12 +72,12 @@ function getAll(name) {
     const obj = {};
     hdrs.forEach((h,i) => {
       let v = row[i];
-      if (h==='services' && typeof v==='string') {
+      if (h === 'services' && typeof v === 'string') {
         try { v = JSON.parse(v); }
-        catch(e) { v = v ? v.split(';').map(s=>s.trim()).filter(Boolean) : []; }
+        catch(e) { v = v ? v.split(',').map(s => s.trim()).filter(Boolean) : []; }
       }
-      if (h==='done') v = (v===true || v==='true' || v==='TRUE');
-      obj[h] = (v===null||v===undefined) ? '' : v;
+      if (h === 'done') v = (v === true || v === 'true' || v === 'TRUE');
+      obj[h] = (v === null || v === undefined) ? '' : v;
     });
     return obj;
   }).filter(r => r.id && r.id !== '');
@@ -98,12 +92,17 @@ function upsert(name, record) {
   const vals = sh.getDataRange().getValues();
   const row = hdrs.map(h => {
     let v = record[h];
-    if (h==='services' && Array.isArray(v)) v = JSON.stringify(v);
-    return (v===null||v===undefined) ? '' : v;
+    if (h === 'services') {
+      if (Array.isArray(v)) v = v.join(', ');
+      else if (typeof v === 'string' && v.startsWith('[')) {
+        try { v = JSON.parse(v).join(', '); } catch(e) {}
+      }
+    }
+    return (v === null || v === undefined) ? '' : v;
   });
   let found = false;
-  for (let i=1; i<vals.length; i++) {
-    if (String(vals[i][0])===String(record.id)) {
+  for (let i = 1; i < vals.length; i++) {
+    if (String(vals[i][0]) === String(record.id)) {
       sh.getRange(i+1,1,1,row.length).setValues([row]);
       found = true;
       break;
@@ -118,13 +117,10 @@ function del(name, id) {
   if (!id) return { error: 'No id' };
   const sh = getSheet(name);
   const vals = sh.getDataRange().getValues();
-  for (let i=vals.length-1; i>=1; i--) {
-    if (String(vals[i][0])===String(id)) {
-      sh.deleteRow(i+1);
-      return { ok: true };
-    }
+  for (let i = vals.length-1; i >= 1; i--) {
+    if (String(vals[i][0]) === String(id)) { sh.deleteRow(i+1); return { ok: true }; }
   }
-  return { ok: false, message: 'Not found' };
+  return { ok: false };
 }
 
 function syncAll(data) {
@@ -141,9 +137,14 @@ function syncAll(data) {
     if (recs.length > 0) {
       const rows = recs.map(r => hdrs.map(h => {
         let v = r[h];
-        if (h==='services' && Array.isArray(v)) v = JSON.stringify(v);
-        if (h==='done') v = v ? 'true' : 'false';
-        return (v===null||v===undefined) ? '' : v;
+        if (h === 'services') {
+          if (Array.isArray(v)) v = v.join(', ');
+          else if (typeof v === 'string' && v.startsWith('[')) {
+            try { v = JSON.parse(v).join(', '); } catch(e) {}
+          }
+        }
+        if (h === 'done') v = v ? 'true' : 'false';
+        return (v === null || v === undefined) ? '' : v;
       }));
       sh.getRange(2,1,rows.length,hdrs.length).setValues(rows);
     }
