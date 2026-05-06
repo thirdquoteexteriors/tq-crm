@@ -121,7 +121,7 @@ function openContactModal(id, defaultStage) {
     </div></div>`;
 }
 
-function saveContact(id) {
+async function saveContact(id) {
   const svcs = [...document.querySelectorAll('.svc-cb:checked')].map(cb => cb.value);
   const data = {
     first: document.getElementById('mFirst').value.trim(),
@@ -144,9 +144,11 @@ function saveContact(id) {
   } else {
     contacts.unshift({ id: uid(), created: new Date().toISOString(), ...data });
   }
-  persist();
+persist();
   closeModal();
   toast(id ? 'Contact updated' : 'Contact added');
+  const record = id ? contacts.find(c => c.id === id) : contacts[0];
+  if (record) await pushRecord('Contacts', record);
   if (currentPage === 'contacts') renderContacts();
   else if (currentPage === 'pipeline') renderPipeline();
   else if (currentPage === 'dashboard') renderDashboard();
