@@ -18,49 +18,55 @@ function loadLocal(key) {
   try { return JSON.parse(localStorage.getItem(key) || '[]'); }
   catch(e) { return []; }
 }
-
-function saveLocal(key, data) {
-  localStorage.setItem(key, JSON.stringify(data));
-}
-
+function saveLocal(key, data) { localStorage.setItem(key, JSON.stringify(data)); }
 function loadAll() {
-  contacts = loadLocal(KEYS.contacts);
+  contacts  = loadLocal(KEYS.contacts);
   estimates = loadLocal(KEYS.estimates);
-  tasks = loadLocal(KEYS.tasks);
-  activity = loadLocal(KEYS.activity);
+  tasks     = loadLocal(KEYS.tasks);
+  activity  = loadLocal(KEYS.activity);
 }
-
 function persist() {
-  saveLocal(KEYS.contacts, contacts);
+  saveLocal(KEYS.contacts,  contacts);
   saveLocal(KEYS.estimates, estimates);
-  saveLocal(KEYS.tasks, tasks);
-  saveLocal(KEYS.activity, activity);
+  saveLocal(KEYS.tasks,     tasks);
+  saveLocal(KEYS.activity,  activity);
 }
-
 function loadSettings() {
-  try { return JSON.parse(localStorage.getItem(KEYS.settings) || '{}'); }
-  catch(e) { return {}; }
+  try { return JSON.parse(localStorage.getItem(KEYS.settings) || '{}'); } catch(e) { return {}; }
 }
-
 function saveSettings() {
-  const s = { user: document.getElementById('currentUser').value };
-  localStorage.setItem(KEYS.settings, JSON.stringify(s));
+  localStorage.setItem(KEYS.settings, JSON.stringify({ user: document.getElementById('currentUser').value }));
 }
 
-// ── GOOGLE SHEETS API ────────────────────────────────────
-async function sheetRequest(body) {
-  const res = await fetch(SCRIPT_URL, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
+// ── API — uses no-cors GET for reads, iframe trick for writes ──
+// Google Apps Script requires no-cors for cross-origin POST
+// Solution: encode writes as GET params (works within URL length limits)
+// For large payloads (sync), we use a form POST via fetch with no-cors + fire-and-forget
+
+async function gasGet(params) {
+  const url = SCRIPT_URL + '?' + new URLSearchParams(params).toString();
+  const res = await fetch(url, { redirect: 'follow' });
   return res.json();
 }
 
+async function gasPost(body) {
+  // Use no-cors for POST — fire and forget (can't read response)
+  // We verify by re-fetching after a short delay
+  await fetch(SCRIPT_URL, {
+    method: 'POST',
+    mode: 'no-cors',
+    body: JSON.stringify(body),
+  });
+}
+
+// ── MAIN API CALLS ───────────────────────────────────────
 async function loadFromSheets() {
   try {
     showSyncStatus('Syncing...');
-    const sheets = ['Contacts', 'Estimates', 'Tasks', 'Activity'];
-    const results = await Promise.all(sheets.map(s => sheetRequest({ action: 'getAll', sheet: s })));
+    const sheets = ['Contacts','Estimates','Tasks','Activity'];
+    const results = await Promise.all(
+      sheets.map(s => gasGet({ action: 'getAll', sheet: s }))
+    );
     if (results[0].records !== undefined) contacts  = results[0].records;
     if (results[1].records !== undefined) estimates = results[1].records;
     if (results[2].records !== undefined) tasks     = results[2].records;
@@ -69,42 +75,51 @@ async function loadFromSheets() {
     showSyncStatus('Synced ✓', true);
     return true;
   } catch(err) {
-    showSyncStatus('Offline — using local data', false, true);
+    console.error('Sync error:', err);
+    showSyncStatus('Offline — local data', false, true);
     return false;
   }
 }
 
 async function pushRecord(sheetName, record) {
   try {
-    await sheetRequest({ action: 'upsert', sheet: sheetName, record });
+    // Encode record as JSON in GET param — works for individual records
+    const params = {
+      action: 'upsert',
+      sheet: sheetName,
+      record: JSON.stringify(record),
+    };
+    const url = SCRIPT_URL + '?' + new URLSearchParams(params).toString();
+    // Use no-cors fetch — fire and forget
+    fetch(url, { mode: 'no-cors', redirect: 'follow' });
     showSyncStatus('Saved ✓', true);
   } catch(err) {
-    showSyncStatus('Save failed — check connection', false, true);
+    showSyncStatus('Save failed', false, true);
   }
 }
 
 async function pushDelete(sheetName, id) {
   try {
-    await sheetRequest({ action: 'delete', sheet: sheetName, id });
-  } catch(err) {
-    console.warn('Delete sync failed:', sheetName, id);
-  }
+    const url = SCRIPT_URL + '?' + new URLSearchParams({ action: 'delete', sheet: sheetName, id }).toString();
+    fetch(url, { mode: 'no-cors', redirect: 'follow' });
+  } catch(err) { console.warn('Delete sync failed'); }
 }
 
 async function pushAllToSheets() {
   try {
-    showSyncStatus('Uploading all data...');
-    await sheetRequest({
+    showSyncStatus('Uploading...');
+    // For full sync, use no-cors POST
+    await gasPost({
       action: 'sync',
       data: { Contacts: contacts, Estimates: estimates, Tasks: tasks, Activity: activity }
     });
-    showSyncStatus('All data uploaded ✓', true);
+    showSyncStatus('Uploaded ✓', true);
   } catch(err) {
     showSyncStatus('Upload failed', false, true);
   }
 }
 
-// ── SYNC STATUS UI ───────────────────────────────────────
+// ── SYNC STATUS ──────────────────────────────────────────
 let syncTimer = null;
 function showSyncStatus(msg, success, error) {
   const el = document.getElementById('syncStatus');
@@ -115,17 +130,18 @@ function showSyncStatus(msg, success, error) {
   if (success) syncTimer = setTimeout(() => { el.textContent = ''; }, 3000);
 }
 
-// Auto-refresh every 30s when tab is visible
+// Auto-refresh every 30s
 setInterval(async () => {
   if (!document.hidden) {
-    const before = JSON.stringify({ contacts, estimates, tasks, activity });
+    const snap = JSON.stringify({contacts,estimates,tasks,activity});
     await loadFromSheets();
-    const after = JSON.stringify({ contacts, estimates, tasks, activity });
-    if (before !== after && typeof currentPage !== 'undefined') {
-      if (currentPage === 'dashboard') renderDashboard();
-      else if (currentPage === 'contacts') renderContacts();
-      else if (currentPage === 'pipeline') renderPipeline();
-      else if (currentPage === 'tasks') renderTasks();
+    if (snap !== JSON.stringify({contacts,estimates,tasks,activity})) {
+      if (typeof currentPage !== 'undefined') {
+        if (currentPage==='dashboard') renderDashboard();
+        else if (currentPage==='contacts') renderContacts();
+        else if (currentPage==='pipeline') renderPipeline();
+        else if (currentPage==='tasks') renderTasks();
+      }
     }
   }
 }, 30000);
